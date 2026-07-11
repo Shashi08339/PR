@@ -1,30 +1,23 @@
-import { Geist, Geist_Mono } from "next/font/google"
+import { Providers } from "./providers";
+import "./globals.css";
 
-import "./globals.css"
-import { ThemeProvider } from "@/components/theme-provider"
-import { cn } from "@/lib/utils";
-
-const geist = Geist({subsets:['latin'],variable:'--font-sans'})
-
-const fontMono = Geist_Mono({
-  subsets: ["latin"],
-  variable: "--font-mono",
-})
+export const metadata = {
+  title: "PR Lens 2.0",
+  description: "Premium AI Code Review Engine OS",
+};
 
 export default function RootLayout({
   children,
-}: Readonly<{
-  children: React.ReactNode
-}>) {
+}: {
+  children: React.ReactNode;
+}) {
   return (
-    <html
-      lang="en"
-      suppressHydrationWarning
-      className={cn("antialiased", fontMono.variable, "font-sans", geist.variable)}
-    >
-      <body>
-        <ThemeProvider>{children}</ThemeProvider>
+    <html lang="en">
+      <body className="bg-[#09090B] text-[#FAFAFA] antialiased">
+        <Providers>
+          {children}
+        </Providers>
       </body>
     </html>
-  )
+  );
 }
