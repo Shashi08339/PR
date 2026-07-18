@@ -57,7 +57,10 @@ export default function Home() {
     setAnalytics(null);
     setLoadingPrs(true);
 
-    fetch(`/api/prs?repo=${encodeURIComponent(repo.fullName)}`)
+    // Dynamic case fallback checking both full_name and fullName fields to safeguard sidebar context switching
+    const targetRepoPath = repo.full_name || repo.fullName || repo.name;
+
+    fetch(`/api/prs?repo=${encodeURIComponent(targetRepoPath)}`)
       .then((res) => res.json())
       .then((data) => {
         if (data.prs) setPrs(data.prs);
@@ -71,7 +74,9 @@ export default function Home() {
     setAnalytics(null);
     setCodeDiff("Loading raw patch data from GitHub structural stream...");
     
-    fetch(`/api/diff?repo=${encodeURIComponent(selectedRepo.fullName)}&pr=${pr.number}`)
+    const targetRepoPath = selectedRepo.full_name || selectedRepo.fullName || selectedRepo.name;
+    
+    fetch(`/api/diff?repo=${encodeURIComponent(targetRepoPath)}&pr=${pr.number}`)
       .then((res) => res.json())
       .then((data) => {
         setCodeDiff(data.diff || "No code changes found in this dynamic stream window.");
@@ -80,9 +85,9 @@ export default function Home() {
   };
 
   const handleReview = async () => {
-    if (!codeDiff || codeDiff.startsWith("Loading")) return;
-    setLoadingReview(true);
+    if (!codeDiff || codeDiff.startsWith("Loading") || codeDiff.startsWith("Select an active")) return;
     setAnalytics(null);
+    setLoadingReview(true);
     
     try {
       const res = await fetch("/api/review", {
@@ -90,56 +95,58 @@ export default function Home() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ codeDiff }),
       });
+      
+      if (!res.ok) throw new Error("Server engine rejected pipeline stream.");
+      
       const data = await res.json();
       setAnalytics(data);
     } catch (err) {
       console.error("Static evaluation crashed", err);
+      alert("Engine connection dropped. Initialized structural diagnostic fallback nodes.");
     } finally {
       setLoadingReview(false);
     }
   };
 
   // Automated handler pushing discovered analysis exceptions downstream directly to GitHub PR threads
- const handleCommitToGitHub = async () => {
-  if (!analytics || !selectedRepo || !selectedPr) return;
-  setCommittingReview(true);
+  const handleCommitToGitHub = async () => {
+    if (!analytics || !selectedRepo || !selectedPr) return;
+    setCommittingReview(true);
 
-  try {
-    // Change this from "/api/commit-review" to your combined route path "/api/review"
-    const res = await fetch("/api/review", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        action: "commit", // Send an explicit action flag so your combined route knows to commit!
-        repoFullName: selectedRepo.fullName,
-        prNumber: selectedPr.number,
-        issues: analytics.issues || []
-      }),
-    });
-    
-    const data = await res.json();
-    if (data.success) {
-      alert("🎉 All metric violations successfully committed directly to your GitHub Pull Request threads!");
-    } else {
-      alert(`Commit compilation fault: ${data.error}`);
+    const targetRepoPath = selectedRepo.full_name || selectedRepo.fullName || selectedRepo.name;
+
+    try {
+      const res = await fetch("/api/review", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "commit", 
+          repoFullName: targetRepoPath,
+          prNumber: selectedPr.number,
+          issues: analytics.issues || []
+        }),
+      });
+      
+      const data = await res.json();
+      if (data.success) {
+        alert("🎉 All metric violations successfully committed directly to your GitHub Pull Request threads!");
+      } else {
+        alert(`Commit compilation fault: ${data.error}`);
+      }
+    } catch (err) {
+      alert("Critical transmission failure communicating error files with upstream target server.");
+    } finally {
+      setCommittingReview(false);
     }
-  } catch (err) {
-    alert("Critical transmission failure communicating error files with upstream target server.");
-  } finally {
-    setCommittingReview(false);
-  }
-};
+  };
 
-  // Maps backend types cleanly to your custom visual design categories
   const getIssuesByCategory = (cat: string) => {
     return analytics?.issues?.filter((i: any) => i.category === cat) || [];
   };
 
-  // Auth Gate: Renders a premium, centered access portal if unauthenticated
   if (!session) {
     return (
       <main className="relative flex min-h-screen flex-col items-center justify-center bg-[#09090B] px-6 overflow-hidden">
-        {/* Glow Ambient Blobs */}
         <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[400px] h-[400px] bg-blue-500/10 rounded-full blur-[120px] pointer-events-none" />
         
         <motion.div 
@@ -159,11 +166,9 @@ export default function Home() {
             onClick={() => signIn("github")} 
             className="w-full h-11 flex items-center justify-center gap-2 bg-blue-600 hover:bg-blue-500 text-white font-medium text-sm rounded-xl transition-all duration-300 shadow-[0_0_20px_rgba(59,130,246,0.3)] hover:shadow-[0_0_25px_rgba(59,130,246,0.5)] cursor-pointer"
           >
-            {/* Raw SVG bypasses any lucide compilation issues */}
             <svg className="w-4 h-4 fill-current" viewBox="0 0 24 24" aria-hidden="true">
               <path fillRule="evenodd" d="M12 2C6.477 2 2 6.484 2 12.017c0 4.425 2.865 8.18 6.839 9.504.5.092.682-.217.682-.483 0-.237-.008-.868-.013-1.703-2.782.605-3.369-1.343-3.369-1.343-.454-1.158-1.11-1.466-1.11-1.466-.908-.62.069-.0.069-.608.1 1.006.942 1.534 1.422 1.534.892 1.53 2.341 1.088 2.91.832.092-.647.35-1.088.636-1.338-2.22-.253-4.555-1.113-4.555-4.951 0-1.093.39-1.988 1.029-2.688-.103-.253-.446-1.272.098-2.65 0 0 .84-.27 2.75 1.026A9.564 9.564 0 0112 6.844c.85.004 1.705.115 2.504.337 1.909-1.296 2.747-1.027 2.747-1.027.546 1.379.202 2.398.1 2.651.64.7 1.028 1.595 1.028 2.688 0 3.848-2.339 4.695-4.566 4.943.359.309.678.92.678 1.855 0 1.338-.012 2.419-.012 2.747 0 .268.18.58.688.482A10.019 10.019 0 0022 12.017C22 6.484 17.522 2 12 2z" clipRule="evenodd" />
             </svg>
-      
             Authenticate via GitHub Portal
           </button>
         </motion.div>
@@ -176,7 +181,6 @@ export default function Home() {
       
       {/* LEFT COLUMN: CONTEXT DRILLDOWN MANAGER */}
       <div className="lg:col-span-1 space-y-6">
-        {/* Repositories Picker Panel */}
         <div className="p-5 rounded-2xl bg-white/[0.03] backdrop-blur-xl border border-white/10 shadow-2xl">
           <h2 className="text-[11px] font-bold tracking-wider text-zinc-500 uppercase mb-3 flex items-center gap-2 font-mono">
             <span>📁 Active Repositories</span>
@@ -205,7 +209,6 @@ export default function Home() {
           </div>
         </div>
 
-        {/* Pull Requests Execution Node Section */}
         {selectedRepo && (
           <motion.div 
             initial={{ opacity: 0, y: 10 }}
@@ -245,7 +248,6 @@ export default function Home() {
       {/* RIGHT COLUMN: CORE WORKSPACE VIEWPORT LAYER */}
       <div className="lg:col-span-3 space-y-6">
         
-        {/* Section Header */}
         <div className="flex flex-col sm:flex-row justify-between sm:items-center gap-4 border-b border-white/10 pb-4">
           <div>
             <h1 className="text-2xl font-black tracking-tight text-white font-geist">AI Review Workspace</h1>
@@ -260,7 +262,6 @@ export default function Home() {
           </button>
         </div>
 
-        {/* Patch Processing Console Code Entry Viewport */}
         <div className="space-y-3">
           <div className="relative rounded-2xl border border-white/10 bg-[#09090B] overflow-hidden shadow-2xl">
             <div className="flex items-center justify-between px-4 py-2 border-b border-white/5 bg-white/[0.02]">
@@ -279,14 +280,13 @@ export default function Home() {
           
           <button
             onClick={handleReview}
-            disabled={loadingReview || !codeDiff || codeDiff.startsWith("Loading")}
+            disabled={loadingReview || !codeDiff || codeDiff.trim() === "" || codeDiff.startsWith("Loading") || codeDiff.startsWith("Select an active")}
             className="w-full h-11 bg-blue-600 hover:bg-blue-500 disabled:opacity-40 text-white font-semibold text-sm rounded-xl transition-all duration-300 flex items-center justify-center gap-2 shadow-[0_0_25px_rgba(59,130,246,0.2)] enabled:hover:shadow-[0_0_25px_rgba(59,130,246,0.4)] disabled:cursor-not-allowed cursor-pointer"
           >
             <Play className={`w-4 h-4 ${loadingReview ? "animate-spin" : ""}`} />
             {loadingReview ? "Processing Grounded Structural Diagnostics..." : "Execute PR-Lens Platform Analysis"}
           </button>
 
-          {/* UPSTREAM COMMIT INTERACTION TRUNKING LAYER */}
           {analytics && (
             <motion.button
               initial={{ opacity: 0, y: 5 }}
@@ -303,7 +303,6 @@ export default function Home() {
           )}
         </div>
 
-        {/* TELEMETRY RESULTS GRID INTERFACE */}
         <AnimatePresence mode="wait">
           {analytics && (
             <motion.div 
@@ -312,7 +311,6 @@ export default function Home() {
               exit={{ opacity: 0, y: -15 }}
               className="space-y-6"
             >
-              {/* Premium Animated Stripe-Style Metrics Dashboard */}
               <TelemetryCards 
                 healthScore={analytics.healthScore}
                 riskLevel={analytics.riskLevel}
@@ -320,10 +318,8 @@ export default function Home() {
                 complexityDelta={analytics.complexityDelta}
               />
 
-              {/* ACTION REVIEWS DETAILED MATRIX GRID */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 
-                {/* SECURITY THREAD SECTION */}
                 <div className="p-5 rounded-2xl bg-white/[0.02] border border-white/8 space-y-4">
                   <h3 className="text-xs font-bold text-rose-400 flex items-center gap-2 font-mono uppercase tracking-wider">
                     <ShieldAlert className="w-4 h-4" /> 
@@ -347,7 +343,6 @@ export default function Home() {
                   </div>
                 </div>
 
-                {/* PERFORMANCE SUBMODULE PANELS */}
                 <div className="p-5 rounded-2xl bg-white/[0.02] border border-white/8 space-y-4">
                   <h3 className="text-xs font-bold text-amber-500 flex items-center gap-2 font-mono uppercase tracking-wider">
                     <Flame className="w-4 h-4" /> 
@@ -371,7 +366,6 @@ export default function Home() {
                   </div>
                 </div>
 
-                {/* GENERAL QUALITY ARCHITECTURE BOARD */}
                 <div className="p-5 rounded-2xl bg-white/[0.02] border border-white/8 space-y-4">
                   <h3 className="text-xs font-bold text-blue-400 flex items-center gap-2 font-mono uppercase tracking-wider">
                     <Zap className="w-4 h-4" /> 
@@ -395,7 +389,6 @@ export default function Home() {
                   </div>
                 </div>
 
-                {/* ARCHITECTURAL POSITIVES SCOREBOARD */}
                 <div className="p-5 rounded-2xl bg-white/[0.02] border border-white/8 space-y-4">
                   <h3 className="text-xs font-bold text-emerald-400 flex items-center gap-2 font-mono uppercase tracking-wider">
                     <CheckCircle2 className="w-4 h-4" /> 
