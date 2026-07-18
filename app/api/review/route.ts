@@ -1,17 +1,20 @@
 import { NextResponse } from "next/server";
-import { getServerSession } from "next-auth";
+import { getToken } from "next-auth/jwt";
 import { GoogleGenAI, Type } from "@google/genai";
 
 // Initialize the Gemini SDK client node safely
 const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY || "MOCK_KEY" });
 
 export async function POST(req: Request) {
-  // 1. Safe session grab wrapper preventing internal server compilation crashes
-  let session: any = null;
+  // getToken (not getServerSession) is required here: getServerSession()
+  // needs authOptions explicitly passed in App Router route handlers, and
+  // without it this previously always returned null — meaning the
+  // "commit review to GitHub" action silently 401'd for every user.
+  let token: any = null;
   try {
-    session = await getServerSession();
+    token = await getToken({ req: req as any });
   } catch (e) {
-    console.warn("Session tracking bypass active.");
+    console.warn("Session token lookup failed.", e);
   }
 
   try {
@@ -20,7 +23,7 @@ export async function POST(req: Request) {
 
     // --- 1. HANDLE UPSTREAM GITHUB PR COMMIT ACTION TRIGGER ---
     if (action === "commit") {
-      if (!session) {
+      if (!token?.accessToken) {
         return NextResponse.json({ error: "Authentication session token required for upstream commits." }, { status: 401 });
       }
       if (!repoFullName || !prNumber || !issues) {
@@ -38,7 +41,7 @@ export async function POST(req: Request) {
         {
           method: "POST",
           headers: {
-            Authorization: `Bearer ${session.accessToken}`,
+            Authorization: `Bearer ${token.accessToken}`,
             Accept: "application/vnd.github+json",
             "X-GitHub-Api-Version": "2022-11-28",
             "Content-Type": "application/json"
